@@ -43,8 +43,11 @@ bl_info = {
     "category": "System"}
 
 import bpy
-from tempfile import gettempdir
 from bpy.props import IntProperty, StringProperty, BoolProperty
+
+import os.path
+from time import gmtime, strftime
+from tempfile import gettempdir
 
 bpy.types.Scene.dorender = BoolProperty(
     name="Render Scene",
@@ -113,6 +116,15 @@ class OBJECT_OT_Button(bpy.types.Operator):
     mode = IntProperty(name="mode", default=1) 
 
     def execute(self, context):
+        # Dispatch the job to tractor.
+        # Spool out the blender file.
+        if not os.path.exists(bpy.context.scene.spool):
+            os.makedirs(bpy.context.scene.spool)
+        shortname = "%s_%s.blend" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
+        fullname = os.path.join(bpy.context.scene.spool, shortname)
+        bpy.ops.wm.save_as_mainfile(filepath=fullname, copy=True)
+        # Create the .alf script.
+        
         print("Render")
         print(bpy.context.scene.dorender)
         print("Chunks")
@@ -140,7 +152,6 @@ if __name__ == "__main__":
 
 '''
 TODO!
-- Save a copy of the blend file to the spool folder.
 - Construct an .alf file.
 - Run batch.
 - Figure out how to filter by file types in the python script file browser.

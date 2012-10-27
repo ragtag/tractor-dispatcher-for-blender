@@ -18,16 +18,15 @@
 
 '''
 DESCRIPTION
-Tractor Dispatcher is a simple tool for dispatching jobs to a render farm managed by Pixar's Tractor render manager. It can be used both for rendering, and for running arbirarty batch jobs defined by a Python script. 
+Tractor Dispatcher is a simple tool for dispatching jobs to a render farm managed by Pixar's Tractor render manager.
 
 HOW TO USE
 Tractor Dispatcher only has a few settings, and will use whatever settings you've set in your .blend file to define everything else (output path and format of rendered images, start frame, end frame and so on).
 
 OPTIONS
 Render Scene - Check this scene if you want the scene to be rendered.
-Frames Per Chunk - The number of frames to send to each tractor blade at a time. If set to 0, the whole job will be sent to a single tractor blade, which is usefull for running simulations.
+Frames Per Chunk - The number of frames to send to each tractor blade at a time.
 Spool Path - This is where the .alf job script is saved, and a copy of your .blend file. This path needs to be accessible to all your tractor blades.
-Script: Python script to run on the scene. The script will be run once for each chunk. If Render Scene is checked, the script will be run before starting the render job.
 '''
 
 bl_info = {
@@ -46,7 +45,8 @@ import bpy
 from bpy.props import IntProperty, StringProperty, BoolProperty
 
 import os.path
-from time import gmtime, strftime
+import subprocess
+from time import gmtime, strftime, sleep
 from tempfile import gettempdir
 from math import ceil
 
@@ -56,16 +56,16 @@ bpy.types.Scene.dorender = BoolProperty(
     default=True
     )
 
-bpy.types.Scene.dosim = BoolProperty(
-    name="Bake All Simulations",
-    description="Bake all simulations on a single farm node",
-    default=False
-    )
+#bpy.types.Scene.bakesim = BoolProperty(
+#    name="Bake All Simulations",
+#    description="Bake all simulations on a single farm node (not implemented)",
+#    default=False
+#    )
 
 bpy.types.Scene.chunks = IntProperty(
     name="Frames Per Chunk", 
     description="Number of frames to run on each blade. Zero runs all on one blade",
-    min = 0, max = 1000000,
+    min = 1, max = 1000000,
     default = 1
     )
 
@@ -81,14 +81,6 @@ bpy.types.Scene.crews = StringProperty(
     description="Comma seperated list of crews to use",
     maxlen=4096,
     default=""
-    )
-
-bpy.types.Scene.script = StringProperty(
-    name="Script",
-    description="Script to run for each chunk, leave empty if just rendering",
-    maxlen=4096,
-    default="",
-    subtype='FILE_PATH'
     )
 
 bpy.types.Scene.spool = StringProperty(
@@ -117,7 +109,7 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
-        row.prop(sce, "dosim")
+        #row.prop(sce, "bakesim")
 
         row =layout.row()
         row.prop(sce, "chunks")
@@ -128,9 +120,6 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "spool")
-
-        row = layout.row()
-        row.prop(sce, "script")
 
         row = layout.row()
         row.operator("object.button", text="Batch", icon='BLENDER')
@@ -172,6 +161,13 @@ class OBJECT_OT_Button(bpy.types.Operator):
             if last > end:
                 last = end
         self.file.write("}")
+        self.file.close()
+        # Just to make doubly sure the .alf script is available on disk.
+        sleep(1)
+        # Dispatch the job to tractor.
+        command = "tractor-spool.py %s" % (jobfull)
+        #print(command)
+        subprocess.call([ command, jobfull ], shell=True)
         return{'FINISHED'}    
         
 
@@ -191,14 +187,10 @@ if __name__ == "__main__":
 
 '''
 TODO!
-- May need to wrap Maya command in bash -c to get it working. Also look at progress printing.
-Sample:
-"/bin/bash -c kick -v 4 -nokeypress -dw -dp -nstdin -log -o /madcrew/OUTPUT/LM_VONBROMS_0054/000_SCN/intro_cut1_sun/000_010_introSetup_beauty.0013.exr -i /madcrew/ASSFILES/LM_VONBROMS_0054/000_SCN/000_010_introSetup_004a_jl/intro_cut1_sun/000_010_introSetup_004a_jl.0013.ass.gz | tractorProgressPrinter "% done" 20"
-- Run batch.
+- See if it breaks with relative texture paths.
 - Create more advanced .alf script, with progress and subtasks.
 - Look at envkeys.
 - Add Bake simulations (possibly try to split different sims on different nodes).
-- Add support for running script on the file.
-- Figure out how to filter by file types in the python script file browser.
 - Add custom icon of a tractor. :)
+- Add support for running custom pre/post-script on the file and/or each chunk.
 '''

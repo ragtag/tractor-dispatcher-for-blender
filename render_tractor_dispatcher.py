@@ -56,6 +56,12 @@ bpy.types.Scene.dorender = BoolProperty(
     default=True
     )
 
+bpy.types.Scene.dosim = BoolProperty(
+    name="Bake All Simulations",
+    description="Bake all simulations on a single farm node",
+    default=False
+    )
+
 bpy.types.Scene.chunks = IntProperty(
     name="Frames Per Chunk", 
     description="Number of frames to run on each blade. Zero runs all on one blade",
@@ -111,6 +117,7 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
+        row.prop(sce, "dosim")
 
         row =layout.row()
         row.prop(sce, "chunks")
@@ -184,16 +191,14 @@ if __name__ == "__main__":
 
 '''
 TODO!
-- May need to wrap  Maya command in bash -c to get it working. Also look at progress printing.
+- May need to wrap Maya command in bash -c to get it working. Also look at progress printing.
 Sample:
-/bin/bash -c kick -v 4 -nokeypress -dw -dp -nstdin -log -o /madcrew/OUTPUT/LM_VONBROMS_0054/000_SCN/intro_cut1_sun/000_010_introSetup_beauty.0013.exr -i /madcrew/ASSFILES/LM_VONBROMS_0054/000_SCN/000_010_introSetup_004a_jl/intro_cut1_sun/000_010_introSetup_004a_jl.0013.ass.gz | tractorProgressPrinter "% done" 20
+"/bin/bash -c kick -v 4 -nokeypress -dw -dp -nstdin -log -o /madcrew/OUTPUT/LM_VONBROMS_0054/000_SCN/intro_cut1_sun/000_010_introSetup_beauty.0013.exr -i /madcrew/ASSFILES/LM_VONBROMS_0054/000_SCN/000_010_introSetup_004a_jl/intro_cut1_sun/000_010_introSetup_004a_jl.0013.ass.gz | tractorProgressPrinter "% done" 20"
 - Run batch.
+- Create more advanced .alf script, with progress and subtasks.
 - Look at envkeys.
+- Add Bake simulations (possibly try to split different sims on different nodes).
 - Add support for running script on the file.
 - Figure out how to filter by file types in the python script file browser.
-- Create scripts for doing simulation (possibly add as checkbox feature).
 - Add custom icon of a tractor. :)
-
-NOTES!
-- tractor-spool.py --priority=99 intensive.alf 
 '''

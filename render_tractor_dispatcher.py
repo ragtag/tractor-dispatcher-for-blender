@@ -156,8 +156,7 @@ class OBJECT_OT_Button(bpy.types.Operator):
         last = start + fpc -1
         for c in range(1,chunks):
             self.file.write("    Task {Range: %s,%s} -cmds {\n" % ( first, last))
-            self.file.write("        RemoteCmd {blender --background %s -a --frame-start %s --frame-end %s --frame-jump 1} -tags {intensive}\n" % ( spoolfull, first, last ))
-            #self.file.write("        RemoteCmd {blender --background %s -a --frame-start %s --frame-end %s --frame-jump 1} -tags {intensive}\n" % ( spoolfull, first, last ))
+            self.file.write("        RemoteCmd {blender --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( spoolfull, first, last ))
             self.file.write("    }\n")
             first = first + fpc
             last = last + fpc
@@ -166,14 +165,6 @@ class OBJECT_OT_Button(bpy.types.Operator):
             if last > end:
                 last = end
         self.file.write("}")
-        #print("Render")
-        #print(bpy.context.scene.dorender)
-        #print("Chunks")
-        #print(bpy.context.scene.chunks)
-        #print("Spool path")
-        #print(bpy.context.scene.spool)
-        #print("Python script to run")
-        #print(bpy.context.scene.script)
         return{'FINISHED'}    
         
 
@@ -193,8 +184,12 @@ if __name__ == "__main__":
 
 '''
 TODO!
+- May need to wrap  Maya command in bash -c to get it working. Also look at progress printing.
+Sample:
+/bin/bash -c kick -v 4 -nokeypress -dw -dp -nstdin -log -o /madcrew/OUTPUT/LM_VONBROMS_0054/000_SCN/intro_cut1_sun/000_010_introSetup_beauty.0013.exr -i /madcrew/ASSFILES/LM_VONBROMS_0054/000_SCN/000_010_introSetup_004a_jl/intro_cut1_sun/000_010_introSetup_004a_jl.0013.ass.gz | tractorProgressPrinter "% done" 20
 - Run batch.
-- Look at crews, envkeys, service and priority.
+- Look at envkeys.
+- Add support for running script on the file.
 - Figure out how to filter by file types in the python script file browser.
 - Create scripts for doing simulation (possibly add as checkbox feature).
 - Add custom icon of a tractor. :)

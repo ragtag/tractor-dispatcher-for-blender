@@ -48,6 +48,7 @@ from bpy.props import IntProperty, StringProperty, BoolProperty
 import os.path
 from time import gmtime, strftime
 from tempfile import gettempdir
+from math import ceil
 
 bpy.types.Scene.dorender = BoolProperty(
     name="Render Scene",
@@ -60,6 +61,20 @@ bpy.types.Scene.chunks = IntProperty(
     description="Number of frames to run on each blade. Zero runs all on one blade",
     min = 0, max = 1000000,
     default = 1
+    )
+
+bpy.types.Scene.priority = IntProperty(
+    name="Priority", 
+    description="Priority in the tractor job queue",
+    min = 0, max = 1000000,
+    default = 1
+    )
+
+bpy.types.Scene.crews = StringProperty(
+    name="Crews",
+    description="Comma seperated list of crews to use",
+    maxlen=4096,
+    default=""
     )
 
 bpy.types.Scene.script = StringProperty(
@@ -96,8 +111,13 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
-        row.prop(sce, "chunks")
 
+        row =layout.row()
+        row.prop(sce, "chunks")
+        row.prop(sce, "priority")
+
+        row = layout.row()
+        row.prop(sce, "crews")
 
         row = layout.row()
         row.prop(sce, "spool")
@@ -120,19 +140,40 @@ class OBJECT_OT_Button(bpy.types.Operator):
         # Spool out the blender file.
         if not os.path.exists(bpy.context.scene.spool):
             os.makedirs(bpy.context.scene.spool)
-        shortname = "%s_%s.blend" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
-        fullname = os.path.join(bpy.context.scene.spool, shortname)
-        bpy.ops.wm.save_as_mainfile(filepath=fullname, copy=True)
+        spoolshort = "%s_%s.blend" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
+        spoolfull = os.path.join(bpy.context.scene.spool, spoolshort)
+        bpy.ops.wm.save_as_mainfile(filepath=spoolfull, copy=True)
         # Create the .alf script.
-        
-        print("Render")
-        print(bpy.context.scene.dorender)
-        print("Chunks")
-        print(bpy.context.scene.chunks)
-        print("Spool path")
-        print(bpy.context.scene.spool)
-        print("Python script to run")
-        print(bpy.context.scene.script)
+        jobshort = "%s_%s.alf" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
+        jobfull = os.path.join(bpy.context.scene.spool, jobshort)
+        self.file = open(jobfull, 'w')
+        self.file.write("Job -title {%s} -priority %s -service {BlenderRender} -crews {%s} -envkey {} -subtasks {\n" % ( spoolshort, bpy.context.scene.priority, bpy.context.scene.crews ))
+        start = bpy.context.scene.frame_start
+        end = bpy.context.scene.frame_end
+        fpc = bpy.context.scene.chunks # frames per chunk
+        chunks = ceil(bpy.context.scene.frame_end - bpy.context.scene.frame_start + 1)
+        first  = start
+        last = start + fpc -1
+        for c in range(1,chunks):
+            self.file.write("    Task {Range: %s,%s} -cmds {\n" % ( first, last))
+            self.file.write("        RemoteCmd {blender --background %s -a --frame-start %s --frame-end %s --frame-jump 1} -tags {intensive}\n" % ( spoolfull, first, last ))
+            #self.file.write("        RemoteCmd {blender --background %s -a --frame-start %s --frame-end %s --frame-jump 1} -tags {intensive}\n" % ( spoolfull, first, last ))
+            self.file.write("    }\n")
+            first = first + fpc
+            last = last + fpc
+            if first > end:
+                break
+            if last > end:
+                last = end
+        self.file.write("}")
+        #print("Render")
+        #print(bpy.context.scene.dorender)
+        #print("Chunks")
+        #print(bpy.context.scene.chunks)
+        #print("Spool path")
+        #print(bpy.context.scene.spool)
+        #print("Python script to run")
+        #print(bpy.context.scene.script)
         return{'FINISHED'}    
         
 
@@ -152,9 +193,12 @@ if __name__ == "__main__":
 
 '''
 TODO!
-- Construct an .alf file.
 - Run batch.
+- Look at crews, envkeys, service and priority.
 - Figure out how to filter by file types in the python script file browser.
 - Create scripts for doing simulation (possibly add as checkbox feature).
 - Add custom icon of a tractor. :)
+
+NOTES!
+- tractor-spool.py --priority=99 intensive.alf 
 '''

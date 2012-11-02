@@ -187,8 +187,9 @@ if __name__ == "__main__":
 
 '''
 TODO!
-- See if it breaks with relative texture paths.
-- Create more advanced .alf script, with progress and subtasks.
+- Fix how it saves out spool files. Now it breaks relative texture paths in the file you have open.
+- Add support for Step/Jump frames.
+- Create more advanced .alf script, with progress and subtasks....maybe.
 - Look at envkeys.
 - Add Bake simulations (possibly try to split different sims on different nodes).
 - Add custom icon of a tractor. :)

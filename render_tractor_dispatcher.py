@@ -20,19 +20,13 @@
 DESCRIPTION
 Tractor Dispatcher is a simple tool for dispatching jobs to a render farm managed by Pixar's Tractor render manager.
 
-HOW TO USE
-Tractor Dispatcher only has a few settings, and will use whatever settings you've set in your .blend file to define everything else (output path and format of rendered images, start frame, end frame and so on).
-
-OPTIONS
-Render Scene - Check this scene if you want the scene to be rendered.
-Frames Per Chunk - The number of frames to send to each tractor blade at a time.
-Spool Path - This is where the .alf job script is saved, and a copy of your .blend file. This path needs to be accessible to all your tractor blades.
+You will need a tractor-spool.py in path, Tractor licenses and a renderfarm to use this script. All paths, including the spool path need to be accessible from all the render nodes.
 '''
 
 bl_info = {
     "name": "Tractor Dispatcher",
     "author": "Ragnar Brynjulfsson",
-    "version": (0, 0, 0),
+    "version": (0, 0, 1),
     "blender": (2, 6, 4),
     "location": "Properties > Render > Tractor Dispatcher",
     "description": "Dispatch jobs to Pixar's Tractor engine ",
@@ -42,7 +36,7 @@ bl_info = {
     "category": "System"}
 
 import bpy
-from bpy.props import IntProperty, StringProperty, BoolProperty
+from bpy.props import IntProperty, StringProperty, BoolProperty, FloatProperty
 
 import os.path
 import subprocess
@@ -50,30 +44,23 @@ from time import gmtime, strftime, sleep
 from tempfile import gettempdir
 from math import ceil
 
+bpy.types.Scene.bakesim = BoolProperty(
+    name="Bake All Simulations",
+    description="Bake all simulations on a single farm node (not implemented)",
+    default=False
+    )
+
 bpy.types.Scene.dorender = BoolProperty(
     name="Render Scene",
     description="Render the scene using current render settings",
     default=True
     )
 
-#bpy.types.Scene.bakesim = BoolProperty(
-#    name="Bake All Simulations",
-#    description="Bake all simulations on a single farm node (not implemented)",
-#    default=False
-#    )
-
-bpy.types.Scene.chunks = IntProperty(
-    name="Frames Per Chunk", 
-    description="Number of frames to run on each blade. Zero runs all on one blade",
-    min = 1, max = 1000000,
-    default = 1
-    )
-
-bpy.types.Scene.priority = IntProperty(
+bpy.types.Scene.priority = FloatProperty(
     name="Priority", 
     description="Priority in the tractor job queue",
-    min = 0, max = 1000000,
-    default = 1
+    min = 0.0, max = 1000000.0,
+    default = 1.0
     )
 
 bpy.types.Scene.crews = StringProperty(
@@ -89,6 +76,12 @@ bpy.types.Scene.spool = StringProperty(
     maxlen=4096,
     default=gettempdir(),
     subtype='DIR_PATH'
+    )
+
+bpy.types.Scene.doclean = BoolProperty(
+    name="Clean Spool",
+    description="Remove .alf job script and spooled .blend file once done",
+    default=True
     )
 
 
@@ -109,10 +102,9 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
-        #row.prop(sce, "bakesim")
+        row.prop(sce, "bakesim")
 
         row =layout.row()
-        row.prop(sce, "chunks")
         row.prop(sce, "priority")
 
         row = layout.row()
@@ -138,7 +130,7 @@ class OBJECT_OT_Button(bpy.types.Operator):
             os.makedirs(bpy.context.scene.spool)
         spoolshort = "%s_%s.blend" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
         spoolfull = os.path.join(bpy.context.scene.spool, spoolshort)
-        bpy.ops.wm.save_as_mainfile(filepath=spoolfull, copy=True)
+        bpy.ops.wm.save_as_mainfile(filepath=spoolfull, copy=True, relative_remap=False)
         # Create the .alf script.
         jobshort = "%s_%s.alf" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
         jobfull = os.path.join(bpy.context.scene.spool, jobshort)
@@ -146,20 +138,11 @@ class OBJECT_OT_Button(bpy.types.Operator):
         self.file.write("Job -title {%s} -priority %s -service {BlenderRender} -crews {%s} -envkey {} -subtasks {\n" % ( spoolshort, bpy.context.scene.priority, bpy.context.scene.crews ))
         start = bpy.context.scene.frame_start
         end = bpy.context.scene.frame_end
-        fpc = bpy.context.scene.chunks # frames per chunk
-        chunks = ceil(bpy.context.scene.frame_end - bpy.context.scene.frame_start + 1)
-        first  = start
-        last = start + fpc -1
-        for c in range(1,chunks):
-            self.file.write("    Task {Range: %s,%s} -cmds {\n" % ( first, last))
-            self.file.write("        RemoteCmd {blender --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( spoolfull, first, last ))
+        step = bpy.context.scene.frame_step
+        for f in range(start,end,step):
+            self.file.write("    Task {Range: %s,%s} -cmds {\n" % ( f, f ))
+            self.file.write("        RemoteCmd {blender --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( spoolfull, f, f ))
             self.file.write("    }\n")
-            first = first + fpc
-            last = last + fpc
-            if first > end:
-                break
-            if last > end:
-                last = end
         self.file.write("}")
         self.file.close()
         # Just to make doubly sure the .alf script is available on disk.
@@ -186,12 +169,62 @@ if __name__ == "__main__":
 
 
 '''
-TODO!
-- Fix how it saves out spool files. Now it breaks relative texture paths in the file you have open.
-- Add support for Step/Jump frames.
-- Create more advanced .alf script, with progress and subtasks....maybe.
-- Look at envkeys.
-- Add Bake simulations (possibly try to split different sims on different nodes).
-- Add custom icon of a tractor. :)
+*********
+* TODO! *
+*********
+- Add cleanup checkbox, for removing .alf and .blend file once the job is done.
+
+*********
+* LATER *
+*********
 - Add support for running custom pre/post-script on the file and/or each chunk.
+- Add Bake simulations (possibly try to split different sims on different nodes).
+- Add support for displaying progress per frame.
+- Look at envkeys.
+- Add custom icon of a tractor. :)
+- Fix how it saves out spool files. Now it breaks relative texture paths in the file you have open.
+-- Reported as bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 )
+
+*********
+* NOTES *
+*********
+PROCESS TREE
+- Pre-Script for render/bake
+- Bake all simulations before rendering
+- Post-Bake Script
+- Render frames
+-- Render a frame
+-- Render another frame
+-- And another
+- Post-Script for render
+- Run cleanup
+
+Job -title {test} -priority 2 -service {BlenderRender} -crews {dailies} -envkey {} -serialsubtasks 1 -subtasks {
+    Task {Pre-Job Script} -cmds {
+    	RemoteCmd {sleep 5}
+    }    
+    Task {Bake All Simulations} -cmds {
+    	RemoteCmd {sleep 5}
+    }    
+    Task {Post-Bake Script} -cmds {
+    	RemoteCmd {sleep 5}
+    }    
+    Task {Render Frames} -subtasks {
+        Task {Render Frame 1} -cmds {
+            RemoteCmd {sleep 5}
+        }
+        Task {Render Frame 2} -cmds {
+            RemoteCmd {sleep 5}
+        }
+        Task {Render Frame 3} -cmds {
+            RemoteCmd {sleep 5}
+        }
+    }
+    Task {Post-Job Script} -cmds {
+    	 RemoteCmd {sleep 5}
+    }
+    Task {Cleanup} -cmds {
+    	 RemoteCmd {sleep 5}
+    }
+}
 '''

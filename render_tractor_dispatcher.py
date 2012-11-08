@@ -43,19 +43,8 @@ import subprocess
 from time import gmtime, strftime, sleep
 from tempfile import gettempdir
 from math import ceil
+from shutil import copy2
 
-#bpy.types.Scene.bakesim = BoolProperty(
-#    name="Bake All Simulations",
-#    description="Bake all simulations on a single farm node (not implemented)",
-#    default=False
-#    )
-
-#bpy.types.Scene.postbakescript = StringProperty(
-#    name="Post-Bake Script",
-#    description="Optional script to run after baking simulation, but before rendering",
-#    maxlen=4096,
-#    subtype='DIR_PATH'
-#    )
 
 bpy.types.Scene.dorender = BoolProperty(
     name="Render Scene",
@@ -99,12 +88,6 @@ bpy.types.Scene.spool = StringProperty(
     subtype='DIR_PATH'
     )
 
-bpy.types.Scene.doclean = BoolProperty(
-    name="Clean Spool",
-    description="Remove .alf job script and spooled .blend file once done (not implemented)",
-    default=False
-    )
-
 
 class TractorDispatcherPanel(bpy.types.Panel):
     """Creates a Panel in the Object properties window"""
@@ -123,8 +106,6 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
-        # row.prop(sce, "bakesim")
-        row.prop(sce, "doclean")
 
         row =layout.row()
         row.prop(sce, "priority")
@@ -136,8 +117,6 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "prescript")
-        #row = layout.row()
-        #row.prop(sce, "postbakescript")
         row = layout.row()
         row.prop(sce, "postscript")
 
@@ -151,33 +130,36 @@ class OBJECT_OT_Button(bpy.types.Operator):
     bl_description = "Dispatch scene to tractor blades"
     mode = IntProperty(name="mode", default=1) 
 
+    def now(self):
+        # Returns preformated time for now.
+        return strftime("%H%M%S", gmtime())
+
     def execute(self, context):
         # Dispatch the job to tractor.
         # Spool out the blender file.
+        spooledfiles = []
         if not os.path.exists(bpy.context.scene.spool):
-            os.makedirs(bpy.context.scene.spool)
-        spoolshort = "%s_%s.blend" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
-        spoolfull = os.path.join(bpy.context.scene.spool, spoolshort)
-        bpy.ops.wm.save_as_mainfile(filepath=spoolfull, copy=True, relative_remap=True)
+            os.makedirs(bpy.context.scene.spool) # TODO! Catch errors
+        basefilename = os.path.basename(os.path.splitext(bpy.data.filepath)[0])
+        blendshort = "%s_%s.blend" % (basefilename, self.now())
+        blendfull = os.path.join(bpy.context.scene.spool, blendshort)
+        bpy.ops.wm.save_as_mainfile(filepath=blendfull, copy=True, relative_remap=True)
+        spooledfiles.append(blendfull)
         # Create the .alf script.
-        jobshort = "%s_%s.alf" % (os.path.basename(os.path.splitext(bpy.data.filepath)[0]), strftime("%y_%m_%d-%H_%M_%S", gmtime()))
+        jobshort = "%s_%s.alf" % (basefilename, self.now())
         jobfull = os.path.join(bpy.context.scene.spool, jobshort)
         self.file = open(jobfull, 'w')
-        self.file.write("Job -title {%s} -priority %s -service {BlenderRender} -crews {%s} -envkey {} -serialsubtasks 1 -subtasks {\n" % ( spoolshort, bpy.context.scene.priority, bpy.context.scene.crews ))
+        spooledfiles.append(jobfull)
+        self.file.write("Job -title {%s} -priority %s -service {BlenderRender} -crews {%s} -envkey {} -serialsubtasks 1 -subtasks {\n" % ( blendshort, bpy.context.scene.priority, bpy.context.scene.crews ))
 
-        # Run pre-script, simulations and post-bake script.
+        # Run pre-script
         if bpy.context.scene.prescript:
+            prefull = os.path.join(bpy.context.scene.spool, "%s_%s_pre.py" % ( basefilename, self.now() ))
+            copy2(bpy.path.abspath(bpy.context.scene.prescript), prefull )
             self.file.write("    Task {Pre-Job Script} -cmds {\n")
-            self.file.write("        RemoteCmd {blender --background %s --python %s}\n" % ( spoolfull, bpy.context.scene.prescript ))
+            self.file.write("        RemoteCmd {%s --background %s --python %s}\n" % ( bpy.app.binary_path, blendfull, prefull ))
             self.file.write("    }\n")
-        #if bpy.context.scene.bakesim:
-        #    self.file.write("    Task {Bake All Simulations} -cmds {\n")
-        #    self.file.write("        RemoteCmd {sleep 5}\n")
-        #    self.file.write("    }\n")
-        #if bpy.context.scene.postbakescript:
-        #    self.file.write("    Task {Post-Bake Script} -cmds {\n")
-        #    self.file.write("        RemoteCmd {blender --background %s --python %s}\n" % ( spoolfull, bpy.context.scene.postbakescript ))
-        #    self.file.write("    }\n")
+            spooledfiles.append(prefull)
 
         # Render frames
         if bpy.context.scene.dorender:
@@ -187,20 +169,18 @@ class OBJECT_OT_Button(bpy.types.Operator):
             step = bpy.context.scene.frame_step
             for f in range(start,end,step):
                 self.file.write("        Task {Frame %s} -cmds {\n" % ( f ))
-                self.file.write("            RemoteCmd {blender --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( spoolfull, f, f ))
+                self.file.write("            RemoteCmd {%s --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( bpy.app.binary_path, blendfull, f, f ))
                 self.file.write("        }\n")
             self.file.write("    }\n")
 
         # Run post-script
         if bpy.context.scene.postscript:
+            postfull = os.path.join(bpy.context.scene.spool, "%s_%s_post.py" % ( basefilename, self.now() ))
+            copy2(bpy.path.abspath(bpy.context.scene.postscript), postfull )
             self.file.write("    Task {Post-Script} -cmds {\n")
-            self.file.write("        RemoteCmd {blender --background %s --python %s}\n" % ( spoolfull, bpy.context.scene.postscript ))
+            self.file.write("        RemoteCmd {%s --background %s --python %s}\n" % ( bpy.app.binary_path, blendfull, bpy.context.scene.postscript ))
             self.file.write("    }\n")
-
-        if bpy.context.scene.doclean:
-            self.file.write("    Task {Cleaning Up} -cmds {\n")
-            self.file.write("        RemoteCmd {sleep 5}\n")
-            self.file.write("    }\n")
+            spooledfiles.append(postfull)
             
         self.file.write("}\n")
         self.file.close()
@@ -232,62 +212,27 @@ if __name__ == "__main__":
 *********
 * TODO! *
 *********
-- Figure out how to save the spooled file from the pre and post scripts.
-- Add support for running custom pre/post-script on the file.
-- Paths to python scripts need to be absolute to work.
+
+********
+* NEXT *
+********
+- Add support for displaying progress per frame.
 
 *********
 * LATER *
 *********
-- Consider if there is a need to run a script for each rendered frame.
-- Add cleanup checkbox, for removing .alf and .blend file once the job is done.
-- Add support for displaying progress per frame.
 - Look at envkeys.
+- Re-introduce chunks.....maybe?
 - Add custom icon of a tractor. :)
-- Add Bake simulations (possibly try to split different sims on different nodes).
-- Fix how it saves out spool files. Now it breaks relative texture paths in the file you have open.
+
+- Wait with publish, until next official release of blender due to bug below.
 -- Reported as bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ) - fix in repos
 
 *********
 * NOTES *
 *********
-PROCESS TREE
-- Pre-Script for render/bake
-- Bake all simulations before rendering
-- Post-Bake Script
-- Render frames
--- Render a frame
--- Render another frame
--- And another
-- Post-Script for render
-- Run cleanup
+- Bake simulations needs a different aproach. It needs a dynamic interface, that lists the available simulations in the scene for you to check on
 
-Job -title {test} -priority 2 -service {BlenderRender} -crews {dailies} -envkey {} -serialsubtasks 1 -subtasks {
-    Task {Pre-Job Script} -cmds {
-    	RemoteCmd {sleep 5}
-    }    
-    Task {Bake All Simulations} -cmds {
-    	RemoteCmd {sleep 5}
-    }    
-    Task {Post-Bake Script} -cmds {
-    	RemoteCmd {sleep 5}
-    }    
-    Task {Render Frames} -subtasks {
-        Task {Render Frame 1} -cmds {
-            RemoteCmd {sleep 5}
-        }
-        Task {Render Frame 2} -cmds {
-            RemoteCmd {sleep 5}
-        }
-        Task {Render Frame 3} -cmds {
-            RemoteCmd {sleep 5}
-        }
-    }
-    Task {Post-Job Script} -cmds {
-    	 RemoteCmd {sleep 5}
-    }
-    Task {Cleanup} -cmds {
-    	 RemoteCmd {sleep 5}
-    }
-}
+- Figure out how to save the spooled file from the pre and post scripts.
+- bpy.ops.wm.save_mainfile(filepath=bpy.data.filepath)
 '''

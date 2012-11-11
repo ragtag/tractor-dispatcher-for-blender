@@ -38,7 +38,7 @@ bl_info = {
 import bpy
 from bpy.props import IntProperty, StringProperty, BoolProperty, FloatProperty
 
-import os.path
+import os
 import subprocess
 from time import gmtime, strftime, sleep
 from tempfile import gettempdir
@@ -49,6 +49,12 @@ from shutil import copy2
 bpy.types.Scene.dorender = BoolProperty(
     name="Render Scene",
     description="Render the scene using current render settings",
+    default=True
+    )
+
+bpy.types.Scene.showprogress = BoolProperty(
+    name="Show Progress",
+    description="Show per frame progress (only works on Linux or OSX with Cycles or Blender Internal renderer)",
     default=True
     )
 
@@ -106,6 +112,7 @@ class TractorDispatcherPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(sce, "dorender")
+        row.prop(sce, "showprogress")
 
         row =layout.row()
         row.prop(sce, "priority")
@@ -162,6 +169,15 @@ class OBJECT_OT_Button(bpy.types.Operator):
             spooledfiles.append(prefull)
 
         # Render frames
+        bashwrap=""
+        progresscmd=" "
+        if bpy.context.scene.showprogress:
+            if bpy.context.scene.render.engine == 'CYCLES':
+                bashwrap="/bin/bash -c {"
+                progresscmd=" | while read line;do echo \$line;echo \$line | grep 'Path Tracing Tile' | awk {'print \$(NF)'} | sed 's/$/*100/' | bc -l | cut -d. -f1| sed 's/^/TR_PROGRESS /;s/\$/%/';done}"
+            if bpy.context.scene.render.engine == 'BLENDER_RENDER':
+                bashwrap="/bin/bash -c {"
+                progresscmd=" | while read line;do echo \$line;echo \$line | grep 'Scene, Part' | awk {'print \$(NF)'} | sed 's/-/\\\//g' | sed 's/$/*100/' | bc -l | cut -d. -f1| sed 's/^/TR_PROGRESS /;s/\$/%/';done}"
         if bpy.context.scene.dorender:
             self.file.write("    Task {Render Frames} -subtasks {\n")
             start = bpy.context.scene.frame_start
@@ -169,7 +185,7 @@ class OBJECT_OT_Button(bpy.types.Operator):
             step = bpy.context.scene.frame_step
             for f in range(start,end,step):
                 self.file.write("        Task {Frame %s} -cmds {\n" % ( f ))
-                self.file.write("            RemoteCmd {%s --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim} -tags {intensive}\n" % ( bpy.app.binary_path, blendfull, f, f ))
+                self.file.write("            RemoteCmd {%s%s --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim %s} -tags {intensive}\n" % ( bashwrap, bpy.app.binary_path, blendfull, f, f, progresscmd ))
                 self.file.write("        }\n")
             self.file.write("    }\n")
 
@@ -212,27 +228,33 @@ if __name__ == "__main__":
 *********
 * TODO! *
 *********
+- Re-introduce chunks.....maybe?
 
 ********
 * NEXT *
 ********
-- Add support for displaying progress per frame.
+- Look at envkeys.
+- Add custom icon of a tractor. :)
 
 *********
 * LATER *
 *********
-- Look at envkeys.
-- Re-introduce chunks.....maybe?
-- Add custom icon of a tractor. :)
-
-- Wait with publish, until next official release of blender due to bug below.
--- Reported as bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ) - fix in repos
+- Bake simluations.
+-- Find all available simulations in the scene, and make each selectable as needed.
+-- Figure out a clever way to dispatch each sim to a different node, and then combine the cache in a new file for rendering.
 
 *********
 * NOTES *
 *********
-- Bake simulations needs a different aproach. It needs a dynamic interface, that lists the available simulations in the scene for you to check on
+- Pre- and post frame scripts can simply use, bpy.app.handlers.render_post/pre in the file.
+- Saving your spooled files in your pre script.
+-- bpy.ops.wm.save_mainfile(filepath=bpy.data.filepath)
 
-- Figure out how to save the spooled file from the pre and post scripts.
-- bpy.ops.wm.save_mainfile(filepath=bpy.data.filepath)
+***************
+* LIMITATIONS *
+***************
+- Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display.
+- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame. This is a limitation of how Blender represents the progress, and Blender does the same in the internal GUI. Until that changes, this limitation will remain.
+- Wait with publish, until next official release of blender due to bug below.
+-- Reported as bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ) - fix in repos
 '''

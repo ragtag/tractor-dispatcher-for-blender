@@ -20,33 +20,12 @@
 DESCRIPTION
 Tractor Dispatcher is a simple tool for dispatching jobs to a render farm managed by Pixar's Tractor render manager.
 
+See http://ragnarb.com/tractor-dispatcher-for-blender for docs.
+
 WARNING!
 This script is only tested on Linux, but should work on OSX too. It likely won't work on Windows, though you never know.
 Prior to version 2.65 of Blender, this plug-in will break Cycles texture paths in your scene. This means that after you dispatch your scene to the farm, you need to reload it. This is due to bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ).
-
-HOW TO USE
-You will need a tractor-spool.py in path, Tractor licenses and a renderfarm to use this script. All file and texture paths, including the spool path need to be accessible from all the render nodes.
-
-The Tractor Dispatcher will use the render setttings you've defined in your scene. There are a few additional settings you need to set in Tractor Dispatcher before you submit your job to the farm. 
-
-Spool Path
-You need to define the Spool Path. This is where the Tractor Dispatcher will save a copy of your .blend file for rendering, as well as save the .alf job script, and copies of your pre- and post-scripts if you're using them. The spool path needs to be available to all render nodes for reading (and writing if you're modifying the file with a pre-script before rendering).
-
-Render Scene
-The Render Scene checkbox tells the dispatcher if to actually render out any frames. You can uncheck this if you want to use the dispatcher simply to run a script on your file on a farm node.
-
-Show Progress
-Show Progress displays progress for each frame when rendering. This only works with Cycles and Blender's Internal renderer. If you're using another renderer you should disable this option. If you're rendering on Windows (something I've not tested), you should disable this option, as it uses a number of shell commands to extract the progress from the Blender output that are not available on Windows. Note that if you're using Blender Internal renderer and motion blur, the progress bar will go from zero to full for each pass of the motion blur, like the progress bar in Blender's GUI.
-
-Crews and Envkey
-Crews and Envkey are the crew you render as, and an arbitrary key you pass to the farm. You can read about them in Pixar's Tractor documentation.
-
-Pre- and Post-Scripts
-Pre-script is an optional python script that is run on the spooled .blend file before the rendering starts. These won't affect the scene you have open, only the temporary .blend file saved out for rendering. If you make changes to the .blend file in your script, remember to add bpy.ops.wm.save_mainfile(filepath=bpy.data.filepath) to the end of your script, to save out your changes before rendering starts.
-
-Post-script is the same as the pre-script, but is run after all frames have finished rendering. It could for instance be used to notify you by mail that your render is done, or to do some processing on the newly rendered frames.
-
-If you want to run scripts before or after rendering each frame, look into bpy.app.handlers.render_post/pre'''
+'''
 
 bl_info = {
     "name": "Tractor Dispatcher",
@@ -274,26 +253,15 @@ if __name__ == "__main__":
 ********
 * NEXT *
 ********
-- Write documentation and set up web page for the script.
 - Test if sleep is needed.
 - Test on the farm.
 
 *********
 * TODO! *
 *********
-- Publish a beta version of the script after 2.65
-
-************
-* Versions *
-************
-0.8 - Alpha. Test and bug fix.
-0.9 - Public beta. Bug fixing.
-1.0 - Official release.
-2.0 - Implement better error handling...maybe.
-2.0 - Combine Blur pass with progress to get a non-repeating progressbar when rendering with Blender Internal render and motion blur.
-3.0 - Bake simluations.
-3.0 -- Find all available simulations in the scene, and make each selectable as needed.
-3.0 -- Figure out a clever way to dispatch each sim to a different node, and then combine the cache in a new file for rendering.
+- Catch errors when jobs fail to dispatch.
+- Combine Blur pass with progress to get a non-repeating progressbar when rendering with Blender Internal render and motion blur.
+- Add support for easily baking simulations.
 
 *********
 * NOTES *
@@ -306,7 +274,5 @@ if __name__ == "__main__":
 * LIMITATIONS *
 ***************
 - Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display.
-- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame. This is a limitation of how Blender represents the progress, and Blender does the same in the internal GUI. Until that changes, this limitation will remain.
-- Wait with publish until Blender 2.65, when the bug below has been fixed.
--- Reported as bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ) - fix in repos
+- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame. 
 '''

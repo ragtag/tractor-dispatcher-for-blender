@@ -254,7 +254,6 @@ if __name__ == "__main__":
 * NEXT *
 ********
 - Test if sleep is needed.
-- Test on the farm.
 
 *********
 * TODO! *
@@ -274,5 +273,6 @@ if __name__ == "__main__":
 * LIMITATIONS *
 ***************
 - Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display as it uses *nix tools to convert the render output log to percentages.
-- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame. 
+- Only tested with Cycles and Blender internal renderer. If trying to use it with other renders you need to uncheck Show Progress. The renderer should also be launched with the same standard command line used for launching blender internal or cycles renderer.
+- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame.
 '''

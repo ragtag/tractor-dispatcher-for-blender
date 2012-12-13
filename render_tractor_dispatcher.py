@@ -30,12 +30,12 @@ Prior to version 2.65 of Blender, this plug-in will break Cycles texture paths i
 bl_info = {
     "name": "Tractor Dispatcher",
     "author": "Ragnar Brynjulfsson",
-    "version": (0, 8, 0),
-    "blender": (2, 6, 4),
+    "version": (1, 0, 0),
+    "blender": (2, 6, 5),
     "location": "Properties > Render > Tractor Dispatcher",
     "description": "Dispatch jobs to Pixar's Tractor render farm manager ",
     "warning": "Prior to version Blender 2.6.5, the dispatcher breaks texture paths in your scene",
-    "wiki_url": "",
+    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Render/Tractor_Dispatcher_for_Blender",
     "tracker_url": "",
     "category": "Render"}
 
@@ -261,7 +261,7 @@ if __name__ == "__main__":
 *********
 - Catch errors when jobs fail to dispatch.
 - Combine Blur pass with progress to get a non-repeating progressbar when rendering with Blender Internal render and motion blur.
-- Add support for easily baking simulations.
+- Add support for easily baking simulations that don't require th
 
 *********
 * NOTES *
@@ -273,6 +273,6 @@ if __name__ == "__main__":
 ***************
 * LIMITATIONS *
 ***************
-- Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display.
+- Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display as it uses *nix tools to convert the render output log to percentages.
 - The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame. 
 '''

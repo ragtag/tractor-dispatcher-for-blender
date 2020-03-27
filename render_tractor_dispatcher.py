@@ -31,7 +31,7 @@ bl_info = {
     "name": "Tractor Dispatcher",
     "author": "Ragnar Brynjulfsson",
     "version": (1, 0, 0),
-    "blender": (2, 6, 5),
+    "blender": (2, 80, 0),
     "location": "Properties > Render > Tractor Dispatcher",
     "description": "Dispatch jobs to Pixar's Tractor render farm manager ",
     "warning": "Prior to version Blender 2.6.5, the dispatcher breaks texture paths in your scene",
@@ -229,9 +229,9 @@ class OBJECT_OT_Button(bpy.types.Operator):
         # Just to make doubly sure the .alf script is available on disk.
         sleep(1)
         # Dispatch the job to tractor.
-        command = "tractor-spool.py %s" % (jobfull)
+        command = "tractor-spool %s" % (jobfull)
         if subprocess.call([ command, jobfull ], shell=True) != 0:
-            raise RuntimeError("Failed to run tractor-spool.py, check that it's in path. The spooled files were still written out to %s" % ( bpy.context.scene.spool ))
+            raise RuntimeError("Failed to run tractor-spool, check that it's in path. The spooled files were still written out to %s" % ( bpy.context.scene.spool ))
         return{'FINISHED'}    
         
 

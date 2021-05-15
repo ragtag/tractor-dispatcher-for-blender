@@ -17,9 +17,8 @@ If running Blender 2.64 and Cycles, this tool will break the paths to your textu
 
 You should now have a Tractor Dispatcher pane at the bottom of the Properties>Render panel that looks something like this.
 
-<p style="text-align: center;">
-  <a href="https://ragnarb.com/blog/wp-content/uploads/2012/12/tractor-dispatcher-for-blender-panel.png"><img loading="lazy" class="size-full wp-image-67 aligncenter" title="tractor-dispatcher-for-blender-panel" src="https://ragnarb.com/blog/wp-content/uploads/2012/12/tractor-dispatcher-for-blender-panel.png" alt="" width="318" height="257" srcset="https://ragnarb.com/blog/wp-content/uploads/2012/12/tractor-dispatcher-for-blender-panel.png 318w, https://ragnarb.com/blog/wp-content/uploads/2012/12/tractor-dispatcher-for-blender-panel-300x242.png 300w" sizes="(max-width: 318px) 100vw, 318px" /></a>
-</p>
+<img src="https://ragnarb.com/blog/wp-content/uploads/2012/12/tractor-dispatcher-for-blender-panel.png" />
+
 
 # How to Use
 

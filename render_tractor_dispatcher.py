@@ -18,87 +18,97 @@
 
 '''
 DESCRIPTION
-Tractor Dispatcher is a simple tool for dispatching jobs to a render farm managed by Pixar's Tractor render manager.
+Dispatch render jobs to Pixar's Tractor render farm manager.
 
-See http://ragnarb.com/tractor-dispatcher-for-blender for docs.
+See https://github.com/ragtag/tractor-dispatcher-for-blender for docs.
 
-WARNING!
-This script is only tested on Linux, but should work on OSX too. It likely won't work on Windows, though you never know.
-Prior to version 2.65 of Blender, this plug-in will break Cycles texture paths in your scene. This means that after you dispatch your scene to the farm, you need to reload it. This is due to bug #33108  ( http://projects.blender.org/tracker/index.php?func=detail&aid=33108&group_id=9&atid=498 ).
+This script is only tested on Linux.
 '''
 
 bl_info = {
     "name": "Tractor Dispatcher",
     "author": "Ragnar Brynjulfsson",
-    "version": (1, 0, 0),
-    "blender": (2, 80, 0),
+    "version": (2, 0, 0),
+    "blender": (2, 93, 0),
     "location": "Properties > Render > Tractor Dispatcher",
     "description": "Dispatch jobs to Pixar's Tractor render farm manager ",
-    "warning": "Prior to version Blender 2.6.5, the dispatcher breaks texture paths in your scene",
-    "wiki_url": "http://wiki.blender.org/index.php/Extensions:2.6/Py/Scripts/Render/Tractor_Dispatcher_for_Blender",
+    "warning": "",
+    "wiki_url": "",
     "tracker_url": "",
     "category": "Render"}
+
+
+import os
+import shlex
+from time import gmtime, strftime
+from tempfile import gettempdir
 
 import bpy
 from bpy.props import IntProperty, StringProperty, BoolProperty, FloatProperty
 
-import os
-import subprocess
-from time import gmtime, strftime, sleep
-from tempfile import gettempdir
-from shutil import copy2
+import tractor.api.author as author
 
-
-bpy.types.Scene.dorender = BoolProperty(
-    name="Render Scene",
-    description="Render the scene using current render settings",
-    default=True
-    )
-
-bpy.types.Scene.showprogress = BoolProperty(
-    name="Show Progress",
-    description="Show per frame progress (only works on Linux or OSX with Cycles or Blender Internal renderer)",
-    default=True
-    )
 
 bpy.types.Scene.priority = FloatProperty(
     name="Priority", 
-    description="Priority in the tractor job queue",
+    description="Priority in the Tractor job queue",
     min = 0.0, max = 1000000.0,
     default = 1.0
     )
 
+if 'PROJECTNAME' in os.environ:
+    projectname = os.getenv('PROJECTNAME')
+else:
+    projectname = ''
+bpy.types.Scene.project = StringProperty(
+    name="Project",
+    description="Name of the project you're working on",
+    maxlen=4096,
+    default=projectname
+    )
+
+if 'DEPARTMENT' in os.environ:
+    crew = os.getenv('DEPARTMENT')
+else:
+    crew = ''
 bpy.types.Scene.crews = StringProperty(
     name="Crews",
-    description="Comma seperated list of crews to use",
+    description="Space seperated list of crews to use",
     maxlen=4096,
-    default=""
+    default=crew
+    )
+
+bpy.types.Scene.servicekey = StringProperty(
+    name="Service Key Expr",
+    description="Service Key Expr used by Tractor",
+    maxlen=4096,
+    default="Cycles"
+)
+
+envkeys = []
+if 'PROJECTNAME' in os.environ:
+    envkeys.append(
+        "PROJECTNAME={name}".format(name=os.getenv('PROJECTNAME'))
+    )
+if 'ASSET' in os.environ:
+    envkeys.append(
+        "ASSET={asset}".format(asset=os.getenv('ASSET'))
+    )
+if 'DEPARTMENT' in os.environ:
+    envkeys.append(
+        "DEPARTMENT={department}".format(department=os.getenv('DEPARTMENT'))
     )
 
 bpy.types.Scene.envkey = StringProperty(
     name="Envkey",
-    description="Arbitrary key passed to the remote machine, used by AlfEnvConfig",
+    description="EnvKey's separated by space (e.g. PROJECT=amazing SHOT=sh010)",
     maxlen=4096,
-    default=""
-    )
-
-bpy.types.Scene.prescript = StringProperty(
-    name="Pre-Script",
-    description="Optional script file to run before the job starts",
-    maxlen=4096,
-    subtype='FILE_PATH'
-    )
-
-bpy.types.Scene.postscript = StringProperty(
-    name="Post-Script",
-    description="Optional script file to run after the job is done",
-    maxlen=4096,
-    subtype='FILE_PATH'
+    default=" ".join(envkeys)
     )
 
 bpy.types.Scene.spool = StringProperty(
     name="Spool Path",
-    description="Path to where temporary files are stored (.alf script and .blend file)",
+    description="Farm readable path to where to save a copy of the  Blender file used for rendering",
     maxlen=4096,
     default=gettempdir(),
     subtype='DIR_PATH'
@@ -106,7 +116,7 @@ bpy.types.Scene.spool = StringProperty(
 
 bpy.types.Scene.usebinarypath = BoolProperty(
     name="Use Full Binary Path",
-    description="Use the full path to the Blender executable (check when using multiple versions of Blender)",
+    description="Use the full path to the Blender executable",
     default=False
     )
 
@@ -127,21 +137,17 @@ class TractorDispatcherPanel(bpy.types.Panel):
         sce = bpy.context.scene
 
         row = layout.row()
-        row.prop(sce, "dorender")
-        row.prop(sce, "showprogress")
-
+        row.prop(sce, "project")
         row =layout.row()
         row.prop(sce, "priority")
 
         row = layout.row()
         row.prop(sce, "crews")
-        row = layout.row()
-        row.prop(sce, "envkey")
 
         row = layout.row()
-        row.prop(sce, "prescript")
+        row.prop(sce, "envkey")
         row = layout.row()
-        row.prop(sce, "postscript")
+        row.prop(sce, "servicekey")
 
         row = layout.row()
         row.prop(sce, "spool")
@@ -160,11 +166,12 @@ class OBJECT_OT_Button(bpy.types.Operator):
     mode = IntProperty(name="mode", default=1) 
 
     def now(self):
-        # Returns preformated time for now.
+        ''' Returns preformated time for now '''
         return strftime("%H%M%S", gmtime())
 
     def execute(self, context):
-        # Dispatch the job to tractor.
+        ''' Dispatch the job to Tractor '''
+
         # Spool out the blender file.
         spooledfiles = []
         if not os.path.exists(bpy.context.scene.spool):
@@ -172,66 +179,51 @@ class OBJECT_OT_Button(bpy.types.Operator):
         basefilename = os.path.basename(os.path.splitext(bpy.data.filepath)[0])
         blendshort = "%s_%s.blend" % (basefilename, self.now())
         blendfull = os.path.join(bpy.context.scene.spool, blendshort)
-        bpy.ops.wm.save_as_mainfile(filepath=blendfull, copy=True, relative_remap=True)
+        bpy.ops.wm.save_as_mainfile(
+            filepath=blendfull, 
+            copy=True, 
+            relative_remap=True
+        )
         spooledfiles.append(blendfull)
-        # Create the .alf script.
+
+        # Define path to blender
         blender_binary = "blender"
         if bpy.context.scene.usebinarypath:
             blender_binary = bpy.app.binary_path
-        jobshort = "%s_%s.alf" % (basefilename, self.now())
-        jobfull = os.path.join(bpy.context.scene.spool, jobshort)
-        self.file = open(jobfull, 'w')
-        spooledfiles.append(jobfull)
-        self.file.write("Job -title {%s} -priority %s -service {BlenderRender} -crews {%s} -envkey {%s} -serialsubtasks 1 -subtasks {\n" % ( blendshort, bpy.context.scene.priority, bpy.context.scene.crews, bpy.context.scene.envkey ))
 
-        # Run pre-script
-        if bpy.context.scene.prescript:
-            prefull = os.path.join(bpy.context.scene.spool, "%s_%s_pre.py" % ( basefilename, self.now() ))
-            copy2(bpy.path.abspath(bpy.context.scene.prescript), prefull )
-            self.file.write("    Task {Pre-Job Script} -cmds {\n")
-            self.file.write("        RemoteCmd {%s --background %s --python %s}\n" % ( blender_binary, blendfull, prefull ))
-            self.file.write("    }\n")
-            spooledfiles.append(prefull)
+        # Create a Tractor job
+        self.job = author.Job(
+            title="blender - {filename} - {collection}".format(
+                filename=basefilename,
+                collection="unknow"
+            ),
+            priority=bpy.context.scene.priority,
+            service=bpy.context.scene.servicekey,
+            projects=[bpy.context.scene.project],
+            crews=shlex.split(bpy.context.scene.crews),
+            envkey=shlex.split(bpy.context.scene.envkey)
+        )
 
         # Render frames
-        bashwrap=""
-        progresscmd=" "
-        if bpy.context.scene.showprogress:
-            if bpy.context.scene.render.engine == 'CYCLES':
-                bashwrap="/bin/bash -c {"
-                progresscmd=" | while read line;do echo \$line;echo \$line | grep 'Path Tracing Tile' | awk {'print \$(NF)'} | sed 's/$/*100/' | bc -l | cut -d. -f1| sed 's/^/TR_PROGRESS /;s/\$/%/';done}"
-            if bpy.context.scene.render.engine == 'BLENDER_RENDER':
-                bashwrap="/bin/bash -c {"
-                progresscmd=" | while read line;do echo \$line;echo \$line | grep 'Scene, Part' | awk {'print \$(NF)'} | sed 's/-/\\\//g' | sed 's/$/*100/' | bc -l | cut -d. -f1| sed 's/^/TR_PROGRESS /;s/\$/%/';done}"
-        if bpy.context.scene.dorender:
-            self.file.write("    Task {Render Frames} -subtasks {\n")
-            start = bpy.context.scene.frame_start
-            end = bpy.context.scene.frame_end + 1
-            step = bpy.context.scene.frame_step
-            for f in range(start,end,step):
-                self.file.write("        Task {Frame %s} -cmds {\n" % ( f ))
-                self.file.write("            RemoteCmd {%s%s --background %s --frame-start %s --frame-end %s --frame-jump 1 --render-anim %s} -tags {intensive blender}\n" % ( bashwrap, blender_binary, blendfull, f, f, progresscmd ))
-                self.file.write("        }\n")
-            self.file.write("    }\n")
+        for f in range(
+                bpy.context.scene.frame_start,
+                bpy.context.scene.frame_end + 1,
+                bpy.context.scene.frame_step):
+            cmd = "{blender_binary} --background {blendfull} "\
+                  "--frame-start {frame_start} --frame-end {frame_end} "\
+                  "--frame-jump 1 --render-anim".format(
+                      blender_binary=blender_binary,
+                      blendfull=blendfull,
+                      frame_start=f,
+                      frame_end=f
+                  )
+            render_task = author.Task(
+                title='Render frame {frame}'.format(frame=f),
+                argv=shlex.split(cmd)
+            )
+            self.job.addChild(render_task)
 
-        # Run post-script
-        if bpy.context.scene.postscript:
-            postfull = os.path.join(bpy.context.scene.spool, "%s_%s_post.py" % ( basefilename, self.now() ))
-            copy2(bpy.path.abspath(bpy.context.scene.postscript), postfull )
-            self.file.write("    Task {Post-Script} -cmds {\n")
-            self.file.write("        RemoteCmd {%s --background %s --python %s}\n" % ( blender_binary, blendfull, bpy.context.scene.postscript ))
-            self.file.write("    }\n")
-            spooledfiles.append(postfull)
-            
-        self.file.write("}\n")
-        self.file.close()
-
-        # Just to make doubly sure the .alf script is available on disk.
-        sleep(1)
-        # Dispatch the job to tractor.
-        command = "tractor-spool %s" % (jobfull)
-        if subprocess.call([ command, jobfull ], shell=True) != 0:
-            raise RuntimeError("Failed to run tractor-spool, check that it's in path. The spooled files were still written out to %s" % ( bpy.context.scene.spool ))
+        self.job.spool()
         return{'FINISHED'}    
         
 
@@ -247,32 +239,3 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
-
-'''
-********
-* NEXT *
-********
-- Test if sleep is needed.
-
-*********
-* TODO! *
-*********
-- Catch errors when jobs fail to dispatch.
-- Combine Blur pass with progress to get a non-repeating progressbar when rendering with Blender Internal render and motion blur.
-- Add support for easily baking simulations that don't require th
-
-*********
-* NOTES *
-*********
-- Pre- and post frame scripts can simply use, bpy.app.handlers.render_post/pre in the file.
-- Saving your spooled files in your pre script.
--- bpy.ops.wm.save_mainfile(filepath=bpy.data.filepath)
-
-***************
-* LIMITATIONS *
-***************
-- Not tested on Windows and OSX. While I've tried making everything as os independent as possible, I don't have access to a farm running on Windows or OSX. OSX will likely work, but for Windows you'll have to disable the progress display as it uses *nix tools to convert the render output log to percentages.
-- Only tested with Cycles and Blender internal renderer. If trying to use it with other renders you need to uncheck Show Progress. The renderer should also be launched with the same standard command line used for launching blender internal or cycles renderer.
-- The progress bar for each frame works incorrectly when using motion blur in the internal render. It will go from zero to full for each pass, rather than for the whole frame.
-'''

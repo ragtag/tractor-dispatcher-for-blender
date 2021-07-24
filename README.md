@@ -14,7 +14,7 @@ To use it you need a render farm running tractor-engine, Pixar Tractor licenses 
 
 You should now have a Tractor Dispatcher pane at the bottom of the Properties>Render panel that looks something like this.
 
-![Tractor Dispatcher interface][https://ragtag.net/xternal/github/tractor-dispatcher-for-blender/farmland.png]
+![Tractor Dispatcher interface](https://ragtag.net/xternal/github/tractor-dispatcher-for-blender/farmland.png)
 
 
 # How to Use
